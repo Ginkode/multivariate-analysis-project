@@ -1,0 +1,1423 @@
+---
+title: "Progetto esame"
+output:
+  html_document: default
+  pdf_document: default
+date: "2025-11-02"
+editor_options: 
+  markdown: 
+    wrap: sentence
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Progetto d'Analisi: Student Habit Performance
+
+In questo report vengono illustrate diverse tecniche di analisi dei dati multidimensionali applicate a una serie di dati raccolti su studenti riguardo le loro attività quotidiane e il loro rendimento scolastico.
+Dando un primo sguardo ai dati, emergono alcune ipotesi di interesse, in particolare una potenziale relazione tra le ore di studio giornaliere e il punteggio ottenuto all’esame.
+Il nostro obiettivo iniziale è proprio quello di esplorare il legame tra il rendimento scolastico (variabile target: exam_score) e le altre variabili, siano esse quantitative o qualitative.
+Inoltre, siccome lavoriamo con un dataset che presenta 15 variabili, ovvero 15 dimensioni, l'obiettivo della nostra analisi si presta anche alla riduzione di complessità dei dati mantenendo però la loro capacità esplicativa, tramite due tecniche:
+
+-   l'**Analisi delle Componenti Principali (PCA)**, utilizzata per ridurre la dimensionalità delle variabili quantitative e comprenderne la struttura interna;
+
+-   l'**Analisi delle Corrispondenze**, utilizzata invece per lo stesso scopo ma con le variabili qualitative
+
+-   Il **Clustering**: utile a individuare gruppi di osservazioni (studenti) accomunate da comportamenti o caratteristiche simili
+
+-   la costruzione di un **modello predittivo basato su reti neurali artificiali**, impiegato per classificare gli studenti in base al loro esito finale (superato se \>60 e non superato se minore).
+
+------------------------------------------------------------------------
+
+## 1. ANALISI DELLE COMPONENTI PRINCIPALI
+
+Per iniziare, carichiamo il dataset e rimuoviamo le variabili non utili all'analisi, come `student_id`.
+
+```{r}
+library(here)
+library(readr)
+library(FactoMineR)
+library(factoextra)
+library("devtools")
+library("ggplot2")
+student_habits_performance <- read_csv("student_habits_performance.csv")
+```
+
+**PREPROCESSING**
+
+Inserisco il dataset nel global environment e lo assegno a una nuova variabile come matrice, poi verifico quali colonne sono numeriche e quali no con il comando
+
+```{r}
+X <- student_habits_performance
+```
+
+`{str(df)}`
+
+elimino student_id in quanto crea solo rumore nella nostra analisi con il comando
+
+```{r}
+Xvr <- subset(X, select = -student_id)
+```
+
+Per comodità creo una nuova matrice di dati da utilizzare esclusivamente nella pca eliminando quindi le variabili categoriche
+
+```{r}
+Xpca <- Xvr[, c("age",
+                "study_hours_per_day",
+                "social_media_hours",
+                "netflix_hours",
+                "attendance_percentage",
+                "sleep_hours",
+                "exercise_frequency",
+                "mental_health_rating",
+                "exam_score")]
+```
+
+la definisco come matrice quindi riassegno
+
+```{r}
+Xpca <- as.matrix(Xpca)
+```
+
+**STANDARDIZZAZIONE**
+
+Una volta ricavati finito il preprocessing ho finalmente la matrice pulita e adatta a svolgere i primi passaggi di standardizzazione che non sarebbero possibili con le variabili categoriche.
+Calcolo quindi le medie di ogni colonna
+
+```{r}
+medie<-colMeans(Xpca)
+```
+
+creo una matrice con il valore delle medie delle colonne su ogni cella della matrice (perchè poi ci sarà utile per la centratura dei dati):
+
+```{r}
+M <- matrix(rep(medie, each = nrow(Xpca)), nrow = nrow(Xpca), byrow = FALSE)
+```
+
+Eseguo la centratura dei dati
+
+```{r}
+ Xc <- Xpca - M
+```
+
+avendo una matrice centrata, la sua trasposta ci darà come risultato la codevianza:
+
+```{r}
+COD <- t(Xc)%*%Xc
+```
+
+essendo Xc una matrice 1000x9, PREmoltiplichiamo la trasposta che sarà quindi t(Xc9x1000)\*Xc1000x9
+
+Ora invece ci ricaviamo la covarianza, quindi per fare ciò dobbiamo tenere conto della numerosità del campione nel calcolo della centratura quindi:
+
+```{r}
+XCN <- (Xpca-M)*(1/sqrt(1000-1))
+```
+
+poi troviamo la covarianza con il comando analogo alla cod:
+
+```{r}
+COV <- t(XCN)%*%XCN
+```
+
+calcoliamo la dev standard:
+
+```{r}
+sigma<-apply(Xpca,2,sd)
+```
+
+Xpca è la variabile su cui eseguire il calcolo, 2 indica che viene fatto sulle colonne (1 per le righe) e sd sta per la formula che stiamo applicando (standard deviation in questo caso) e il tutto la assegnamo alla variabile sigma
+
+dopodichè creo una matrice che ci servirà dopo della stessa dimensione del vettore colonna sigma ovvero 1x1000
+
+```{r}
+SD <- matrix(1,1000,1)
+```
+
+poi creo una nuova matrice SD contenenti le deviazioni standard di ogni colonna in ogni cella moltiplicandola per la matrice creata precedentemente con sigma:
+
+```{r}
+SD <- SD%*%sigma
+```
+
+standardizzo:
+
+```{r}
+Z<-XCN*(1/SD)
+```
+
+la trasposta della matrice Z dà la correlazione:
+
+```{r}
+R <- t(Z)%*%Z
+```
+
+se si osserva la matrice R appena creata si può notare che avremo sulla diagonale tutti 1, quindi una matrice diagonale
+
+approssimiamo al terzo decimale:
+
+```{r}
+R <- round(R, digits = 3)
+```
+
+**ANALISI GRAFICI CORRELAZIONE**
+
+ora creo un corrplot per individuare graficamente la forza delle relazioni tra le variabili quantitative:
+
+```{r}
+library(corrplot)
+corrplot(R, method = "number", is.corr = TRUE)
+```
+
+L’analisi della matrice di correlazione ci permette di osservare l’intensità e il segno delle relazioni lineari tra le variabili quantitative.
+Come era nelle nostre aspettative, emerge chiaramente una forte correlazione positiva tra le ore di studio giornaliere e il punteggio all’esame (valore di correlazione pari a 0.82), il che conferma l’ipotesi iniziale che queste due variabili siano strettamente connesse.
+
+Questa osservazione guida la scelta delle variabili da utilizzare per la visualizzazione tridimensionale tramite uno scatterplot 3D.
+Poiché tale grafico richiede di rappresentare i dati su tre assi (x, y, z), è fondamentale selezionare tre variabili esplicative che possano fornire il maggior numero di informazioni possibili e contribuire a spiegare la variabilità della variabile target.
+In questo caso, oltre alle ore di studio, selezioneremo altre due variabili che mostrano una relazione significativa con l’esito, al fine di esplorare visivamente la distribuzione dei dati e i possibili pattern.
+
+```{r}
+library(scatterplot3d)
+
+scatterplot3d(Xpca[, c("study_hours_per_day", "mental_health_rating", "exam_score")],
+              highlight.3d = TRUE,
+              pch = 19,
+              type = "h",
+              main = "3D Scatterplot: Studio, Benessere Mentale, Voto",
+              xlab = "Study Hours per Day",
+              ylab = "Mental Health Rating",
+              zlab = "Exam Score")
+
+```
+
+```{r}
+pairs(Xpca[, c("study_hours_per_day", "mental_health_rating", "exam_score")],
+      main = "Scatterplot multiplo",
+      pch = 19, col = "darkblue")
+
+```
+
+In entrambi gli scatterplot, sia nel 3D che nel 2D si intravede una relazione molto forte e positiva tra le variabili study_hours_per_day e exam_score.
+
+Nella sua versione 3D possiamo vedere come l'altezza dei punti in exam score cresca con l'avanzare delle ore di studio, mentre per la variabile Mental_health la differenza è minima, appena visibile.
+
+Nello scatterplot multiplo a due dimensioni la differenza visibile è netta.
+In ogni colonna è presente il riquadro che indica il nome della variabile di cui viene analizzata la sua relazione con le altre due.
+Nei riquadri in cui sono presenti i punti relativi alle coordinate dei legami delle variabili si può osservare che sono disposti in diagonale in ordine crescente quando il riquadro è Study hours per day x Exam score, mentre sono sparsi, non mostrando alcun tipo di relazione in tutti gli altri casi.
+
+**Autovalori e autovettori**
+
+Ora attraverso la matrice di correlazione possiamo ricavare gli autovalori, variabilità spiegata che dobbiamo massimizzare nel calcolo della pca e gli autovettori, risolviamo quindi -\> X'Xu = lambda u :
+
+```{r}
+eig <- eigen(R)
+```
+
+assegnamo esclusivamente i valori presenti in eig a una nuova matrice chiamata lambda:
+
+```{r}
+lambda<- eig$values
+```
+
+Calcoliamo la variabilità totale che ci servirà a rapportarla alla variabilità spiegata per capire quanta percentuale di informazione conserviamo:
+
+```{r}
+varTOT <- sum(lambda)
+varEXP <- lambda/varTOT*100
+varEXP <- round(varEXP, digits = 3)
+```
+
+la variabilità cumulata invece ci aiuterà a capire quanti valori estrarre per avere una buona capacità esplicativa:
+
+```{r}
+var_cum <- cumsum(varEXP)
+```
+
+**ESTRAZIONE DELLE COMPONENTI**
+
+Una fase cruciale dell'analisi è proprio la scelta di quanti fattori/componenti estrarre, in quanto il nostro obiettivo è proprio quello di ridurre la dimensionalità dei dati, dobbiamo allora cercare di spiegare quanta più informazione possibile utilizzando meno dati del necessario, escludendo quindi quelli con poca capacità esplicativa che creano solo rumore nell'analisi
+
+I criteri che si possono utilizzare sono diversi, a discrezione dell'analista/ricercatore.
+
+Di solito i software prediligono il metodo dell'estrazione dell'autovalore maggiore di 1 o l'estrazione della quantità di quegli autovalori che raggiungono la soglia del 70% della variabilità spiegata.
+
+Un altro metodo è quello dell'analisi dello Scree Plot, un diagramma in cui sono posti gli autovalori nell'asse delle ordinate X in ordine decrescente.
+Si osserva la curva e quando si assottiglia, che sta a significare quando la variabilità crea solo rumore o comunque spiega poco.
+
+```{r}
+barplot(lambda, 
+         main = "Screeplot degli autovalori",
+         xlab = "N. componenti",
+         ylab = "lambda",
+         col = "blue2")
+lines(x=lambda, y=NULL, type = "b", pch=19, col = "red")
+```
+
+```{r}
+res.pca = PCA(Xpca,scale.unit=TRUE,graph= F)
+summary(res.pca)
+desc_pca <- lapply(dimdesc(res.pca), lapply, round, 6)
+fviz_eig(res.pca, main= "Scree-plot Componenti", choice = "eigenvalue",
+addlabels=TRUE, col.var = "steelblue")
+```
+
+Il grafico creato con Factominer per confrontarlo con quello che abbiamo creato noi manualmente ci fornisce un feedback positivo in quanto è praticamente lo stesso
+
+Dallo scree plot si nota una forte decrescita iniziale degli autovalori, soprattutto tra la prima e la seconda componente.
+Dopo la terza componente la curva si appiattisce.
+Applicando il criterio della gomitata, terrei soltanto 1 o 2 componenti massimo.
+
+Però ora confrontiamo con var_cum:
+
+```{r}
+var_cum
+```
+
+chiamando la variabile var_cum si potrà visualizzare sulla console i valori in % della varianza:
+
+```         
+[1] 21.554 33.528 45.317 56.723 67.868 78.747 89.221 99.440 99.999
+```
+
+Considerando la varianza cumulata, ne servono almeno 5 per arrivare al 67.8%, quindi molto vicino al 70.
+Per essere totalmente sicuri con 6 variabili arriverei al 78% ma al costo di lavorare con una dimensione in più e di estrarre un autovalore inferiore a 1.
+
+Quindi potrei scegliere 2 componenti per semplicità interpretativa o 5 per rappresentare meglio i dati
+
+Nel nostro caso abbiamo deciso di lavorare con 5 componenti rientrando quindi in due criteri per la selezione degli autovalori.
+
+Inseriamo dentro u i valori degli autovettori, creando così una matrice di autovettori che ci servirà per calcolare PSI:
+
+```{r}
+u<- eig$vectors
+PSI<-Z%*%u
+```
+
+Per avere una matrice di correlazione tra la matrice originale Xpca e la matrice delle Componenti CP calcoliamo la Factor Pattern:
+
+```{r}
+FP <- round(cor(Xpca, PSI), 3)
+```
+
+Per rappresentare meglio i dati come ho già detto bisognerebbe lavorare su almeno 5 componenti che spiegano intorno al 70% della varianza ma questo significherebbe dover analizzare la relazione tra ogni singola componente con le restanti.
+Per ora ci limitiamo ad osservare invece soltanto la relazione tra le prime 3 componenti solo per questione di praticità.
+
+Quindi, estraiamo le 5 componenti che ci interessano e creiamo una nuova matrice a cui assegniamo quei valori:
+
+```{r}
+FP5 <- FP[, 1:5]
+```
+
+e dopo creiamo dei cerchi di correlazione tra CP1 e CP2, CP1 e CP3, CP2 e CP3:
+
+```{r}
+par(pty = "s")
+library(plotrix)
+
+plot(FP[, 1:2],
+     xlim = c(-1.2, 1.2), ylim = c(-1.2, 1.2),
+     xlab = "CP1", ylab = "CP2",
+     main = "Cerchio delle correlazioni assi CP1 e CP2",
+     col = "white")
+
+abline(h = 0, v = 0)
+draw.circle(0, 0, 1, border = "red")
+
+variabili <- rownames(FP)
+
+text(FP[, 1], FP[, 2], labels = variabili, cex = 0.7, pos = 4)
+
+for (j in 1:nrow(FP)) {
+  arrows(0, 0, FP[j, 1], FP[j, 2], length = 0.1)
+}
+
+```
+
+```{r}
+par(pty = "s")
+library(plotrix)
+
+plot(FP[, c(1, 3)],
+     xlim = c(-1.2, 1.2), ylim = c(-1.2, 1.2),
+     xlab = "CP1", ylab = "CP3",
+     main = "Cerchio delle correlazioni assi CP1 e CP3",
+     col = "white")
+
+abline(h = 0, v = 0)
+draw.circle(0, 0, 1, border = "red")
+
+variabili <- rownames(FP)
+text(FP[, 1], FP[, 3], labels = variabili, cex = 0.7, pos = 4)
+
+for (j in 1:nrow(FP)) {
+  arrows(0, 0, FP[j, 1], FP[j, 3], length = 0.1)
+}
+
+```
+
+```{r}
+par(pty = "s")
+library(plotrix)
+
+plot(FP[, c(2, 3)],
+     xlim = c(-1.2, 1.2), ylim = c(-1.2, 1.2),
+     xlab = "CP2", ylab = "CP3",
+     main = "Cerchio delle correlazioni assi CP2 e CP3",
+     col = "white")
+
+abline(h = 0, v = 0)
+draw.circle(0, 0, 1, border = "red")
+
+variabili <- rownames(FP)
+text(FP[, 2], FP[, 3], labels = variabili, cex = 0.7, pos = 4)
+
+for (j in 1:nrow(FP)) {
+  arrows(0, 0, FP[j, 2], FP[j, 3], length = 0.1)
+}
+
+```
+
+```{r}
+fviz_pca_var(res.pca, col.var="contrib")+ scale_color_gradient2(low="limegreen", 
+mid="blue", high="red", midpoint = 40)
+```
+
+Il grafico creato con Factominer per confrontarlo con quello che abbiamo creato noi manualmente ci fornisce un feedback positivo in quanto è praticamente lo stesso
+
+L’analisi combinata dei tre cerchi delle correlazioni conferma e rafforza le ipotesi iniziali:
+
+La relazione positiva tra ore di studio e rendimento scolastico è evidente in tutti i grafici, sia per direzione che per lunghezza e vicinanza delle frecce.
+
+Altre variabili, come uso dei social o del tempo libero (Netflix, social media), tendono a correlarsi negativamente con il punteggio d’esame, anche se non significativamente siccome la lunghezza delle frecce comunque indica una bassa correlazione.
+
+Alcune variabili (es. sleep_hours, age) mostrano frecce corte o angoli ampi rispetto alle altre, suggerendo una bassa influenza sulle componenti principali analizzate.
+
+Questo tipo di analisi dimostra che la riduzione di dimensionalità tramite PCA non solo semplifica la lettura del dataset, ma permette anche di mantenere e rafforzare le relazioni più significative tra le variabili.
+
+**SPAZIO DEGLI INDIVIDUI**
+
+Nel processo di analisi delle componenti principali la rappresentazione grafica degli individui e delle variabili è fondamentale per interpretare correttamente la struttura latente dei dati.
+Sebbene sia possibile costruire manualmente i grafici a partire dai risultati della PCA, in questo progetto si è preferito utilizzare i pacchetti FactoMineR e factoextra per le seguenti ragioni:
+
+Estetica e chiarezza visiva
+
+Colorazione informativa
+
+Sintesi grafica efficace: Il biplot ottenuto con fviz_pca_biplot() unisce la rappresentazione delle osservazioni e delle variabili in un unico piano, evidenziando pattern, direzioni di massima variabilità e gruppi naturali di osservazioni.
+È uno strumento utile sia in fase esplorativa che per comunicare i risultati.
+
+Efficienza e semplicità d’uso: Bastano poche righe di codice per ottenere una rappresentazione completa e professionale, evitando la complessità delle personalizzazioni manuali.
+
+Per questi motivi, la visualizzazione dei risultati della PCA attraverso FactoMineR e factoextra non è solo una scelta estetica, ma anche metodologica, volta a facilitare l’interpretazione e la comunicazione efficace dell’analisi multidimensionale condotta.
+
+DIFFERENZA TRA I GRAFICI
+
+```{r}
+#plot(PSI[,1:2], xlab="PSI1", ylab="PSI2", type="n", xlim=c(-1.5,1.5), ylim=c(-1.5,1.5))
+#text(PSI[,1], PSI[,2], labels = rownames(student_habits_performance), col="darkblue", cex=0.7) abline(h=0, v=0, lty=2, lwd=1.5)
+```
+
+![](Rplot20.png)
+
+FACTOMINER
+
+```{r}
+library(FactoMineR)
+library(factoextra)
+res.pca <- PCA(Xpca, scale.unit=TRUE, graph=FALSE)
+fviz_pca_ind(res.pca, col.ind="cos2")
+```
+
+![](Rplot21.png)
+
+Questo grafico rappresenta gli studenti (osservazioni) nello spazio delle prime due componenti principali, Dim1 e Dim2, che spiegano rispettivamente il 21.6% e il 12% della varianza totale dei dati.
+Ogni punto nel piano rappresenta uno studente e il suo posizionamento riflette combinazioni di variabili originali.
+
+La colorazione è basata sul valore di cos², che misura la qualità della rappresentazione del singolo punto sul piano: più è vicino a 1 (colore chiaro), più la posizione dello studente è ben spiegata da queste due componenti.
+
+Dall'immagine si nota che la maggior parte degli studenti è concentrata al centro, segno che molti dati non si distaccano molto dalla media.
+
+Alcuni punti sono più isolati (outlier): potrebbero rappresentare studenti con abitudini o risultati molto diversi rispetto alla media (es. studio intensivo o scarso, alto o basso punteggio).
+
+BIPLOT
+
+```{r}
+fviz_pca_biplot(res.pca)
+```
+
+![](Rplot22.png)
+
+Il biplot combina la rappresentazione degli individui (studenti) e delle variabili quantitative nello stesso spazio.
+
+Le frecce rappresentano le variabili originali e indicano la direzione lungo cui esse crescono.
+
+La lunghezza delle frecce è proporzionale al contributo della variabile alla varianza spiegata dalle componenti: più è lunga, più quella variabile ha un peso nella definizione di quel piano.
+
+Variabili come study_hours_per_day e exam_score puntano in una direzione simile → suggerisce una correlazione positiva tra studio e performance.
+
+Al contrario, variabili come social_media_hours o netflix_hours puntano in direzione opposta rispetto a exam_score, indicando una correlazione negativa: più tempo speso sui social o su Netflix, minori i punteggi all’esame.
+
+Interpretazione generale: Dalla sovrapposizione di studenti e variabili:
+
+Chi si posiziona vicino a frecce come study_hours_per_day e exam_score tende ad avere comportamenti coerenti con buone performance scolastiche.
+
+Chi invece è vicino a variabili ricreative mostra una tendenza opposta.
+
+In conclusione questa rappresentazione è molto utile per identificare pattern globali e relazioni tra stili di vita e successo accademico.
+
+## 2. CLUSTERING
+
+La matrice X, la stessa utilizzata per l’analisi delle componenti principali, contiene esclusivamente valori numerici ed è pronta per l’elaborazione: ogni riga rappresenta uno studente e ogni colonna una variabile.
+Tutte le variabili sono state standardizzate, operazione fondamentale nel clustering perché evita che quelle con valori più ampi (ad esempio le ore di studio) dominino la misura di distanza rispetto a variabili espresse su scale minori.
+Successivamente sono state calcolate due diverse misure di distanza: la distanza euclidea, che misura la “lontananza in linea retta” tra i profili enfatizzando le differenze ampie (ideale per il metodo Ward.D2, che tuttavia non testeremo), e la distanza di Manhattan, che somma le differenze assolute variabile per variabile, risultando più robusta alla presenza di outlier.
+
+```{r}
+X<- as.matrix(Xpca)
+#Standardizzazione matrice 
+Z<-scale(X)
+
+#Distanza euclidea
+d<-dist(Z)
+d<-round(d,2)
+
+#Distanza di Manhattan
+d_m<-dist(Z,method="manhattan")
+d_m<-round(d_m,2)
+```
+
+Nei tre blocchi successivi saranno trestati e messi a confronto tre metodi di clusterizzazione: singolo, completo e medio.
+
+```{r}
+#Metodo del legame singolo
+hc_s<-hclust(d,method="single")
+summary(hc_s)
+plot(hc_s) #genero il dendrogramma
+groups<-cutree(hc_s, k=4) #pruning
+rect.hclust(hc_s, k=4, border="red")
+n<-nrow(X)
+n_clus<-seq(n-1,1)
+#hc_s$merge
+#hc_s$height
+d_fus_s<-hc_s$height
+plot(d_fus_s,n_clus,"b", 
+     main="Screeplot Legame singolo", 
+     xlab="Distanza di Fusione",
+     ylab="N. di gruppi",
+     cex=0.6, col="red",lwd=2.5)
+
+#cbind(hc_s$merge,hc_s$height)
+groups <- cutree(hc_s, k=5)
+rect.hclust(hc_s, k=5, border="red")
+```
+
+Applicando il metodo singolo e tagliando il dendrogramma a𝑘= 4 e𝑘= 5, il grafico mostra il tipico chaining effect: le osservazioni vengono aggregate per catene di vicini, con moltissime fusioni a distanza molto bassa e una struttura “schiacciata” in basso.
+Lo screeplot delle altezze di fusione (distanza vs. numero di gruppi) decresce in modo quasi monotono e senza un vero “gomito”, segnale che non emergono separazioni nette tra cluster; i tagli a 4 o 5 gruppi risultano quindi arbitrari e instabili (cluster spesso sbilanciati e sensibili al rumore).
+In sintesi, per questo dataset il legame singolo non è adatto: non evidenzia una struttura di raggruppamento robusta.
+
+```{r}
+#Metodo del legame completo
+hc_c<-hclust(d,method="complete")
+summary(hc_c)
+plot(hc_c)
+groups<-cutree(hc_c, k=4) 
+rect.hclust(hc_c, k=4, border="red")
+n<-nrow(X)
+n_clus<-seq(n-1,1)
+#hc_c$merge
+#hc_c$height
+d_fus_c<-hc_c$height
+
+plot(d_fus_c,n_clus,"b", 
+     main="Screeplot Legame completo", 
+     xlab="Distanza di Fusione",
+     ylab="N. di gruppi",
+     cex=0.6, col="red",lwd=2.5)
+
+#cbind(hc_c$merge,hc_c$height)
+groups <- cutree(hc_c, k=5)
+rect.hclust(hc_c, k=5, border="red")
+```
+
+Il metodo del legame completo aggrega i gruppi in base alla massima distanza tra le osservazioni appartenenti a cluster diversi.
+Rispetto al legame singolo, questo approccio penalizza le connessioni tra punti distanti, producendo cluster più compatti e meglio separati.
+Nel dendrogramma, il taglio a 4 gruppi evidenzia una struttura più equilibrata, con altezze di fusione più progressive e senza il forte effetto di “catena” osservato nel legame singolo.
+Lo screeplot mostra una diminuzione più graduale del numero di gruppi rispetto alla distanza, con un lieve punto di flesso tra 3 e 4 unità che può indicare un numero di cluster plausibile.
+Il legame completo fornisce, dunque, una rappresentazione più stabile e interpretabile della struttura dei dati, mantenendo una buona separazione tra gruppi e riducendo la sensibilità agli outlier.
+
+```{r}
+# Metodo del legame medio (average)
+hc_a <- hclust(d, method = "average")
+summary(hc_a)
+plot(hc_a, main = "Average linkage")
+groups <- cutree(hc_a, k = 4)  # pruning
+rect.hclust(hc_a, k = 4, border = "red")
+
+n <- nrow(X)
+n_clus <- seq(n - 1, 1)
+#hc_a$merge
+#hc_a$height
+d_fus_a <- hc_a$height
+
+plot(d_fus_a, n_clus, "b",
+     main = "Screeplot Legame medio",
+     xlab = "Distanza di Fusione",
+     ylab = "N. di gruppi",
+     cex = 0.6, col = "red", lwd = 2.5)
+
+# cbind(hc_a$merge, hc_a$height)
+groups <- cutree(hc_a, k = 5)
+rect.hclust(hc_a, k = 5, border = "red")
+```
+
+Il metodo del legame medio calcola la distanza tra due cluster come la media delle distanze tra tutte le coppie di elementi appartenenti ai due gruppi, Nel dendrogramma, la struttura risulta più bilanciata: non si osservano le lunghe “catene” tipiche del legame singolo, e i gruppi mostrano una coesione interna più omogenea.
+Lo screeplot evidenzia una decrescita graduale del numero di gruppi con l’aumentare della distanza di fusione, suggerendo una maggiore stabilità nelle aggregazioni intermedie, specialmente intorno a distanze comprese tra 2 e 3.
+
+```{r}
+#Visualizzazione grafica dei cluster 
+
+#Estrazione dei gruppi dal clustering gerarchico (es. metodo completo)
+groups <- cutree(hc_c, k = 4) 
+
+#Analisi delle componenti principali per riduzione dimensionale
+acp <- prcomp(X, scale. = TRUE)
+
+#Creazione della matrice con le prime due componenti
+coord <- acp$x[, 1:2]
+df_plot <- data.frame(coord, cluster = as.factor(groups))
+
+#Visualizzazione 2D con ggplot2
+library(ggplot2)
+
+ggplot(df_plot, aes(x = PC1, y = PC2, color = cluster)) +
+  geom_point(size = 2, alpha = 0.7) +
+  labs(
+    title = "Visualizzazione dei cluster (metodo del legame completo)",
+    x = "Componente Principale 1",
+    y = "Componente Principale 2",
+    color = "Cluster"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    legend.position = "right"
+  )
+```
+
+Interpretazione dei cluster
+
+Attraverso l’analisi dei cluster siamo riusciti a suddividere gli studenti in quattro gruppi distinti, ognuno con caratteristiche piuttosto precise in termini di abitudini quotidiane, benessere personale e rendimento accademico.
+Di seguito, cerchiamo di raccontare questi gruppi come quattro profili tipici, così da rendere più concreto il significato dei risultati ottenuti.
+
+PRIMO CLUSTER: Questo gruppo raccoglie studenti che, in generale, studiano poco e ottengono punteggi più bassi agli esami.
+Anche se non sembrano avere abitudini di vita particolarmente scorrette, mostrano una frequenza solo moderata alle lezioni e livelli di benessere percepito piuttosto bassi, quindi, sembra trattarsi di studenti poco motivati o forse poco coinvolti nel percorso scolastico, che faticano a ottenere risultati soddisfacenti.
+
+SECONDO CLUSTER: In netto contrasto con il primo gruppo, questi studenti mostrano un forte impegno nello studio, infatti passano molte ore sui libri e ottengono i migliori risultati agli esami.
+Non solo: riescono anche a mantenere uno stile di vita sano ed equilibrato, dormendo regolarmente, facendo esercizio fisico e mantenendo un buon benessere psicologico.
+Si tratta del profilo ideale, quello che riesce a trovare il giusto equilibrio tra performance accademica e benessere personale.
+
+TERZO CLUSTER: Questi studenti trascorrono più tempo sui social media, ma nonostante ciò riescono comunque a ottenere risultati positivi.
+Hanno un buon livello di salute mentale e abitudini di sonno regolari anche se tendono a fare poca attività fisica.
+Nel complesso, rappresentano un gruppo piuttosto equilibrato, che riesce a conciliare una vita sociale attiva con buoni risultati nello studio, pur con qualche area di miglioramento.
+
+QUARTO CLUSTER: Questo gruppo include studenti generalmente più grandi di età, con una maggiore propensione al riposo e al tempo libero (spendono infatti più ore su piattaforme come Netflix), infatti mostrano una bassa partecipazione scolastica e una certa irregolarità nello studio.
+I risultati agli esami non sono pessimi ma si nota una certa discontinuità, è come se gestissero in modo autonomo il proprio tempo, a volte efficacemente, a volte meno.
+
+Nel complesso, l’analisi ha messo in evidenza diverse tipologie di studenti, con abitudini e atteggiamenti molto vari.
+
+Questo tipo di segmentazione può essere molto utile per:
+
+Individuare i gruppi che potrebbero avere bisogno di maggiore supporto, soprattutto dal punto di vista della motivazione o dell’organizzazione dello studio.
+
+Valorizzare i comportamenti più efficaci, come quelli del secondo cluster, che dimostrano come un buon equilibrio tra impegno, salute e benessere possa portare a risultati eccellenti.
+
+In conclusione, i cluster non servono solo a “etichettare” gli studenti, ma ci offrono uno strumento interpretativo utile per capire meglio come le diverse abitudini influiscano sulle performance scolastiche — e magari pensare a interventi più mirati ed efficaci.
+
+## 3. ANALISI DELLE CORRISPONDENZE
+
+Per rendere il dataset adatto all’analisi delle corrispondenze, che è dedicata all'analisi di variabili qualitative, si è proceduto alla trasformazione in fattori delle variabili nominali già presenti (genere e livello di istruzione parentale) e alla categorizzazione di alcune variabili numeriche di interesse.
+In particolare, sono state create tre nuove variabili: - score_cat, che suddivide il punteggio d’esame in cinque fasce di rendimento (da “gravemente insufficiente” a “eccellente”); - mental_health_cat, che classifica la valutazione del benessere mentale su cinque livelli (da “molto basso” a “molto alto”); - exercise_cat, che sintetizza la frequenza dell’attività fisica in quattro modalità (“Mai”, “Poco”, “A volte”, “Spesso”).
+Queste trasformazioni hanno permesso di costruire tabelle di contingenza tra coppie di variabili e di analizzarne la struttura con la CA, mantenendo una lettura coerente con l’approccio già adottato nella PCA sulle variabili quantitative:
+
+```{r}
+X <- as.data.frame(student_habits_performance) 
+
+# Converto le qualitative in fattori (nominali)
+
+X[ , "gender"] <- as.factor(X[ , "gender"])
+X[ , "parental_education_level"] <- as.factor(X[ , "parental_education_level"])
+
+X$exam_score <- as.numeric(X$exam_score)
+
+# Creo le categorie del punteggio a partire da exam_score
+
+X[ , "score_cat"] <- cut(
+  X[ , "exam_score"],
+  breaks = c(-Inf, 50, 60, 80, 90, Inf),
+  labels = c("gravemente_insufficiente",
+             "lievemente_insufficiente",
+             "sufficiente_o_discreto",
+             "ottimo",
+             "eccellente"),
+  right = FALSE   
+)
+
+# Creo le categorie della salute mentale da mental_health_rating
+X[ , "mental_health_cat"] <- cut(
+  X[ , "mental_health_rating"],
+  breaks = c(-Inf, 2, 4, 6, 8, Inf),
+  labels = c("molto_basso", "basso", "medio", "alto", "molto_alto"),
+  right = FALSE
+)
+
+
+# Creo le categorie del'esercizio fisico a partire da excercise_frequency
+X[ , "exercise_cat"] <- cut(
+  X[ , "exercise_frequency"],
+  breaks = c(-Inf, 1, 3, 5, Inf),
+  labels = c("Mai", "Poco", "A volte", "Spesso"),
+  right = FALSE
+)
+
+```
+
+Dopo aver costruito le variabili categoriali, si è verificata la presenza di associazioni significative tra il rendimento scolastico e altre variabili qualitative mediante il test del chi-quadro di indipendenza.
+I risultati hanno mostrato che: - la relazione tra punteggio e genere non è significativa (p = 0.3977), indicando una distribuzione dei risultati simile tra maschi e femmine; - anche la relazione tra punteggio e livello di istruzione parentale non risulta significativa (p = 0.9592), segnalando l’assenza di un legame tra background familiare e performance; - al contrario, la relazione tra punteggio e frequenza dell’esercizio fisico è significativa (p = 0.0002), suggerendo un possibile effetto positivo dell’attività fisica sui risultati scolastici; - infine, l’associazione tra punteggio e salute mentale è fortemente significativa (p \< 0.001), evidenziando un legame diretto tra benessere psicologico e rendimento.
+Sulla base di questi risultati, genere e istruzione parentale sono state escluse per mancanza di relazione significativa con il punteggio e si è deciso di procedere nell'analisi con la coppia “punteggio × salute mentale”.
+
+```{r}
+#Chi-quadro punteggio x genere, istruzione parentale, salute mentale, esercizio
+
+tab_gender <- table(X[ , "score_cat"], X[ , "gender"])
+tab_gender
+chi_quadro_gender <- chisq.test(tab_gender)
+chi_quadro_gender  #Test chi-quadro non significativo (p = 0.3977)
+
+tab_par_ed <- table(X[ , "score_cat"], X[ , "parental_education_level"])
+tab_par_ed
+chi_quadro_par_ed <- chisq.test(tab_par_ed)
+chi_quadro_par_ed   #Test chi-quadro non significativo (p-value = 0.9592)
+
+tab_exercise <- table(X[ , "score_cat"], X[ , "exercise_cat"])
+tab_exercise
+chi_quadro_exercise <- chisq.test(tab_exercise)
+chi_quadro_exercise #Test chi-quadro significativo (p-value = 0.0002453)
+chi_quadro_exercise$p.value<0.05 #verifica soglia
+
+tab_mental_h <- table(X[ , "score_cat"], X[ , "mental_health_cat"])
+tab_mental_h
+chi_quadro_mental_h <- chisq.test(tab_mental_h)
+chi_quadro_mental_h #Test chi-quadro molto significativo (p-value = 2.588e-14)
+chi_quadro_mental_h$p.value<0.05 #verifica soglia
+
+```
+
+Dopo aver individuato la coppia di variabili più fortemente associata (punteggio × salute mentale), si è proceduto a costruire la matrice delle frequenze relative (F), che rappresenta la distribuzione congiunta normalizzata delle due variabili.
+Successivamente, sono stati calcolati i marginali di riga e di colonna, ossia le frequenze relative complessive per ciascuna modalità del punteggio e della salute mentale e le matrici diagonali delle masse di riga e di colonna (Dr e Dc) e le rispettive inverse (Dr_inv e Dc_inv), necessarie per la normalizzazione dei dati.
+Poi si sono calcolati i profili riga (Pr) e i profili colonna (Pc), dividendo ogni frequenza per il totale della riga o della colonna corrispondente.
+
+```{r}
+
+#Per proseguire l'analisi scelgo di procedere con il p-value più basso.
+
+tab_mental_h<-as.matrix(tab_mental_h)
+
+# Calcolo la numerosità campionaria della tabella di contingenza tab_mental_h
+
+n<-sum(tab_mental_h)
+
+#Creo la matrice delle frequenze relative F
+
+F<-tab_mental_h/n
+F<-round(F,3) # arrotondo alla terza decimale
+
+#Calcolo i marginali di riga e di colonna
+
+sumrow<-apply(F,1,sum)
+sumcol<-apply(F,2,sum)
+
+#Calcolo della matrice diagonale dei profili riga e alla sua inversa
+Dr<-diag(sumrow)
+Dr_inv<-solve(Dr)
+
+#Calcolo i profili riga come divisione tra gli elementi della F e i marginali di riga
+#In termini matriciali si ottiene premoltiplicando l'inverso della matrice dei marginali per F
+
+Pr<-Dr_inv%*%F
+
+#Calcolo della matrice diagonale dei profili colonna e della sua inversa
+Dc<-diag(sumcol)
+Dc_inv<-solve(Dc)
+
+#Calcolo i profili colonna come divisione tra gli elementi della F e i marginali di colonna
+#In termini matriciali si ottiene premoltiplicando la matrice F all'inverso della matrice dei marginali colonna
+
+Pc<-F%*%Dc_inv
+
+#Calcolo il profilo medio di riga premoltiplicando la matrice dei profili riga/colonna alle masse
+
+Pr_medio<-sumrow%*%Pr
+Pc_medio<-sumcol%*%(t(Pc))
+```
+
+Sui profili così ottenuti, si sono calcolate dapprima le distanze euclidee, che misurano la dissimilarità tra due modalità di riga o di colonna sulla base delle frequenze relative.
+Tuttavia, poiché tali distanze non tengono conto del peso delle diverse modalità, si è poi introdotta la distanza del chi-quadro, che ridimensiona l’influenza delle frequenze più elevate e costituisce la misura fondamentale dell’analisi delle corrispondenze.
+Questa trasformazione consente di confrontare correttamente i profili, attribuendo maggiore peso alle differenze relative nelle celle meno frequenti e costruendo così lo spazio fattoriale su cui verranno calcolate le componenti principali nelle fasi successive.
+
+```{r}
+#Calcolo le distanze euclidee (tra due righe)
+
+d_euc_r<-dist(rbind(Pr[1,],Pr[2,]))
+d_euc_c<-dist(rbind(Pr[,1],Pr[,2]))
+
+#Calcolo la distanza del chi-quadro per ridimensionare l'influenza delle frequenze più elevate
+
+d<-Pr[1,]-Pr[2,]
+d<-d^2/sumcol
+d_chi_r<-round(sqrt(sum(d)),3)
+
+d<-Pr[,1]-Pr[,2]
+d<-d^2/sumrow
+d_chi_c<-round(sqrt(sum(d)),3)
+```
+
+Nel successivo passaggio si è passati alla costruzione della matrice S, che rappresenta la relazione tra i profili di riga e di colonna e costituisce la base per l’analisi fattoriale delle corrispondenze.
+La matrice viene diagonalizzata per individuare gli autovalori, che quantificano la quota di inerzia spiegata da ciascuna dimensione, e gli autovettori, che definiscono le direzioni principali lungo le quali si distribuiscono le modalità delle variabili analizzate.
+Poiché la prima componente rappresenta la media generale dei profili e non contiene informazione utile ai fini interpretativi, essa viene rimossa.
+Infine, vengono calcolati gli autovettori associati alle righe.
+
+```{r}
+#Calcolo la matrice S (trasposta dei profili riga per profili colonna)
+
+S<-t(Pr)%*%Pc               # S = F trasposto x Inv(Dr) x F x Dc^(-1)
+
+#Diagonalizzo S in A
+A<-t(F)%*%Dr_inv%*%F        # ponendo A = F trasposto x Inv(Dr) x F
+Dc_12<-diag(sumcol^(-1/2))  # Scomponenado Dc^(-1) otteniamo S = A x Dc^(-1/2) x Dc^(-1/2)
+S_tilde<-Dc_12%*%A%*%Dc_12  # omega = Dc^(-1/2) x u
+
+#Estraggo gli autovalori
+AC<-eigen(S_tilde)
+AC
+lambda<-as.matrix(AC$values)
+lambda<-lambda[-1,]         # elimino il primo autovalore
+lambda
+
+#Assegno a w gli autovettori
+w<-AC$vectors              #  questo valore è w (omega) * Dc^(-1/2)
+
+#Calcolo gli autovettori u a partire da w
+u<-Dc^(1/2)%*%w 
+u<-u[,-1]              
+u
+
+```
+
+Successivamente si passa a calcolare la matrice S\*, analoga alla precedente ma riferita ai profili colonna, utile per rappresentare in modo simmetrico le due variabili all’interno dello stesso spazio fattoriale.
+Si determinata, poi, la costante di normalizzazione necessaria a calcolare, attraverso la formula di transizione, gli autovettori v associati alle colonne.
+
+```{r}
+#Passo ai profili colonna
+S_star<-F%*%Dc_inv%*%t(F)%*%Dr_inv
+
+#Calcolo della costante per passare da u a v
+
+sq_lambda<-diag((sqrt(lambda))^(-1))
+
+#Formula di transizione per trovare v
+v<-F%*%Dc_inv%*%u%*%sq_lambda       
+
+```
+
+In questo passaggio si calcola l’inerzia totale della tabella, che rappresenta la variabilità complessiva da spiegare, e la si confronta con gli autovalori ottenuti nella fase precedente.
+Da tale confronto si ricavano le percentuali di inerzia spiegata da ciascuna componente fattoriale e la corrispondente inerzia cumulata, che indica quanta parte della variabilità totale è spiegata progressivamente dalle prime dimensioni.
+Per facilitare l’interpretazione, i risultati vengono rappresentati graficamente tramite lo scree plot, che mostra il contributo relativo di ciascuna dimensione.
+
+```{r}
+
+#Scelta delle componenti              
+inerzia<-sum(diag(S))-1
+inerzia<-round(inerzia,3)              #inerzia totale
+sum(lambda)
+in_exp<-lambda/inerzia                 #inerzia spiegata
+in_exp_cum<-cumsum(in_exp)             #inerzia spiegata cumulata
+in_exp_cum<-round(in_exp_cum,3)
+in_exp_cum
+
+
+#Grafico salto di inerzia spiegata
+screeplot<-barplot(in_exp,main="Scree-plot inerzia",xlab="Dimensione",ylab="Lambda",col="lightblue")
+
+```
+
+L’analisi degli autovalori mostra che la prima dimensione spiega oltre il 95% dell’inerzia totale, mentre le dimensioni successive apportano contributi marginali.
+Questo indica che la variabilità della relazione tra salute mentale e rendimento scolastico è quasi interamente concentrata lungo un unico asse fattoriale, che riassume efficacemente la struttura associativa dei dati.
+
+Nella sezione successiva si ricavano, a partire dagli autovettori, i fattori e le coordinate principali di righe e colonne, costruendo così la rappresentazione geometrica delle modalità nello spazio fattoriale.
+Le coordinate principali (PSI per le righe, PHI per le colonne) permettono di costruire il grafico congiunto sul piano delle prime due dimensioni, utile per interpretare le associazioni.
+Successivamente, si calcolano le coordinate standard, che normalizzano le coordinate principali in funzione dell’inerzia delle componenti; queste servono a confrontare le modalità su assi resi omogenei per scala, facilitando lettura e confronto tra righe e colonne.
+
+I grafici delle coordinate principali e standard evidenziano una chiara struttura monodimensionale, con le modalità disposte lungo un asse che oppone i livelli più bassi di salute mentale e rendimento a quelli più alti.
+Le modalità estreme risultano ben separate e ben rappresentate, confermando che la prima dimensione sintetizza efficacemente la relazione tra le due variabili.
+
+```{r}
+#Calcolo di Fattori e Coordinate principali dello Spazio delle righe
+
+fp_r<-Dc_inv%*%u
+PSI_coord<-Dr_inv%*%F%*%fp_r
+
+#Calcolo di Fattori e Coordinate principali dello Spazio delle colonne
+fp_c<-Dr_inv%*%v
+PHI_coord<-Dc_inv%*%t(F)%*%fp_c
+
+#Etichette per grafici
+
+righe   <- c("gravemente_insufficiente",
+             "lievemente_insufficiente",
+             "sufficiente_o_discreto",
+             "ottimo",
+             "eccellente")
+
+colonne <- c("molto_basso","basso","medio","alto","molto_alto")
+
+#Creazione della matrice delle coordinate principali + grafico congiunto
+
+PRINCOORD<-rbind(PSI_coord,PHI_coord)
+
+plot (PRINCOORD [,1] , PRINCOORD [,2], type = "n", main = "Coordinate Principali", xlab ="Asse1",ylab =
+        "Asse2")
+text (PRINCOORD [1:5,1], PRINCOORD[1:5,2], labels = righe, col = "blue")
+text(PRINCOORD[6:10, 1], PRINCOORD[6:10, 2], labels = colonne, col = "red")
+abline(h=0,v=0,lty=2,lwd=1.5)
+
+#Calcolo delle Coordinate Standard di Profili Riga e Colonna
+
+beta<-(sqrt(lambda))^1        #inserisco un fattore di scala: un baricentro beta pari a 1/√lambda
+beta<-diag(beta)
+b_PSI<-PSI_coord%*%beta       #profili riga
+b_PHI<-PHI_coord%*%beta       #profili colonna
+b_coord<-rbind(b_PSI,b_PHI)
+
+#Creazione grafico congiunto coordinate standard
+
+plot(b_coord[,1],b_coord[,2],type="n",xlab="Asse1",
+     ylab="Asse2",main="Coordinate Standard")
+abline(h=0,v=0,lty=2,lwd=1.5)
+text(b_coord[1:5,1],b_coord[1:5,2],labels=righe,col="coral")
+text(b_coord[6:10, 1],b_coord[6:10, 2],labels=colonne,col="darkcyan")
+
+```
+
+In questa sezione si calcolano i contributi assoluti e relativi delle modalità di riga e di colonna rispetto agli assi fattoriali ottenuti in precedenza.I contributi assoluti misurano il peso con cui ciascuna modalità partecipa alla costruzione delle dimensioni fattoriali: valori più elevati indicano modalità che incidono maggiormente sulla formazione di un asse, mentre contributi molto bassi segnalano modalità meno influenti.
+Successivamente, vengono calcolati i cos², che esprimono la qualità della rappresentazione delle modalità nello spazio fattoriale.
+
+Per quanto riguarda i contributi, si rileva che per le righe le modalità "gravemente insufficiente" (0.43) e "eccellente" (0.37) hanno contributi alti sull’asse 1, polarizzano, quindi, la prima dimensione, rappresentando gli estremi del rendimento.
+Per le colonne, i livelli di salute mentale "molto alto" (0.45) e "molto basso" (0.20) contribuiscono fortemente allo stesso asse definendo il gradiente di benessere psicologico.
+L’asse 1, dunque, oppone basso rendimento / bassa salute mentale a alto rendimento / alta salute mentale — come si poteva già intuire dal chi-quadro e dall’inerzia.
+
+I cos² delle righe mostrano che "gravemente insufficiente", "ottimo" ed "eccellente" hanno valori \> 0.95 sull’asse 1 quindi sono ben rappresentati e fortemente correlati con la prima dimensione.
+Anche per le colonne, "molto basso" e "molto alto" hanno cos² \> 0.95 sul primo asse pertanti rappresentano gli estremi opposti del continuum salute mentale.
+
+L’insieme conferma che la prima dimensione spiega quasi tutta la variabilità (come già visto nella distribuzione dell’inerzia): la relazione è quasi perfettamente monodimensionale e ben riassunta dall’opposizione scarso benessere / basso rendimento e buon benessere / alto rendimento.
+
+```{r}
+
+#Calcolo contributi assoluti
+
+ca_r<-Dr%*%fp_c^2
+ca_c<-Dc%*%fp_r^2
+
+#Calcolo contributi relativi Righe
+
+G<-matrix(sumcol,5,5,byrow=T)    #Matrice dei baricentri righe
+di<-(Pr-G)^2%*%Dc_inv             #Distanza Profili riga dai baricentri
+d_ig<-apply(di,1,sum)             
+cos2r<-PSI_coord^2/d_ig           #Contributi relativi righe: qualità della rappresentazione
+
+#Calcolo contributi relativi Colonne
+
+H<-matrix(sumrow,5,5)           #Matrice dei baricentri colonne
+dj<-(Dr_inv%*%(Pc-H)^2)         #Distanza Profili colonna dai baricentri
+d_jh<-apply(dj,2,sum)
+cos2c<-PHI_coord^2/d_jh         #Contributi relativi colonne
+     
+```
+
+In questo blocco si costruiscono due tabelle di sintesi (per righe e per colonne) che raccolgono in modo compatto le informazioni principali della CA.
+Le tabelle di riepilogo confermano che la relazione tra rendimento scolastico e salute mentale è quasi interamente spiegata dalla prima dimensione, che oppone i soggetti con punteggi più bassi e livelli di benessere mentale ridotto a quelli con risultati migliori e maggiore salute psicologica.
+Le categorie estreme (“gravemente insufficiente”, “eccellente”, “molto basso”, “molto alto”) presentano i contributi e i cos² più elevati, indicando che definiscono la struttura principale dell’associazione.
+Le modalità intermedie risultano invece più centrali e meno caratterizzanti, coerentemente con la natura monodimensionale del fenomeno osservato.
+
+```{r}
+#RIEPILOGO
+
+#per le righe
+sumlab <- c("masse","coord1","coord2","ctr.ass1","ctr.ass2","ctr.rel1","ctr.rel2")
+row_summary <- cbind(sumrow, PSI_coord[,1:2], ca_r[,1:2], cos2r[,1:2])
+colnames(row_summary) <- sumlab
+row_summary <- round(row_summary, 3)
+View(row_summary)
+
+#per le colonne
+col_summary <- cbind(sumcol, PHI_coord[,1:2], ca_c[,1:2], cos2c[,1:2])
+colnames(col_summary) <- sumlab
+colnames(col_summary)<-sumlab
+col_summary<-round(col_summary,3)
+View(col_summary)
+
+#Grafico congiunto bidimensionale
+library(FactoMineR)
+tab <- as.matrix(tab_exercise)
+res <- CA(tab, ncp = 4, graph = TRUE)
+```
+
+L’analisi delle corrispondenze tra rendimento scolastico e salute mentale ha evidenziato una struttura fortemente monodimensionale, con la quasi totalità dell’inerzia spiegata dal primo asse, a indicare una relazione chiara ma semplice.
+Per ampliare l’indagine, si è scelto di esaminare la relazione tra esercizio fisico e rendimento scolastico, risultato statisticamente significativo al test del chi-quadro (p = 0.0002).
+Questa coppia di variabili, meno rigidamente correlata e più sfaccettata nei comportamenti, può offrire una struttura fattoriale più articolata, utile a comprendere ulteriori dimensioni del profilo studentesco.
+
+Si riporta di seguito l'intero blocco di codice sostanzialmente analogo al precedente senza replicare i commenti blocco per blocco ma limitando l'approfondimento ai soli risultati.
+
+```{r}
+
+#Avendo ottenuto un risultato monodimensionale riprovo a effettuare l'analisi sull'esercizio fisico
+
+tab_exercise<-as.matrix(tab_exercise)
+
+# Calcolo la numerosità campionaria della tabella di contingenza tab_exercise
+
+n<-sum(tab_exercise)
+
+#Creo la matrice delle frequenze relative F
+
+F<-tab_exercise/n
+F<-round(F,3) # arrotondo alla terza decimaleF
+
+#Calcolo i marginali di riga e di colonna
+
+sumrow<-apply(F,1,sum)
+sumcol<-apply(F,2,sum)
+
+#Calcolo della matrice diagonale dei profili riga e alla sua inversa
+Dr<-diag(sumrow)
+Dr_inv<-solve(Dr)
+
+#Calcolo i profili riga come divisione tra gli elementi della F e i marginali di riga
+#In termini matriciali si ottiene premoltiplicando l'inverso della matrice dei marginali per F
+
+Pr<-Dr_inv%*%F
+
+#Calcolo della matrice diagonale dei profili colonna e della sua inversa
+Dc<-diag(sumcol)
+Dc_inv<-solve(Dc)
+
+#Calcolo i profili colonna come divisione tra gli elementi della F e i marginali di colonna
+#In termini matriciali si ottiene premoltiplicando la matrice F all'inverso della matrice dei marginali colonna
+
+Pc<-F%*%Dc_inv
+
+#Calcolo il profilo medio di riga premoltiplicando la matrice dei profili riga/colonna alle masse
+
+Pr_medio<-sumrow%*%Pr
+Pc_medio<-sumcol%*%(t(Pc))
+
+#Calcolo le distanze euclidee (tra due righe)
+
+d_euc_r<-dist(rbind(Pr[1,],Pr[2,]))
+d_euc_c<-dist(rbind(Pr[,1],Pr[,2]))
+
+#Calcolo la distanza del chi-quadro per ridimensionare l'influenza delle frequenze più elevate
+
+d<-Pr[1,]-Pr[2,]
+d<-d^2/sumcol
+d_chi_r<-round(sqrt(sum(d)),3)
+
+d<-Pr[,1]-Pr[,2]
+d<-d^2/sumrow
+d_chi_c<-round(sqrt(sum(d)),3)
+
+#Calcolo la matrice S (trasposta dei profili riga per profili colonna)
+
+S<-t(Pr)%*%Pc               # S = F trasposto x Inv(Dr) x F x Dc^(-1)
+
+#Diagonalizzo S in A
+A<-t(F)%*%Dr_inv%*%F        # ponendo A = F trasposto x Inv(Dr) x F
+Dc_12<-diag(sumcol^(-1/2))  # Scomponenado Dc^(-1) otteniamo S = A x Dc^(-1/2) x Dc^(-1/2)
+S_tilde<-Dc_12%*%A%*%Dc_12  # omega = Dc^(-1/2) x u
+
+#Estraggo gli autovalori
+AC<-eigen(S_tilde)
+AC
+lambda<-as.matrix(AC$values)
+lambda<-lambda[-1,]         # elimino il primo autovalore
+lambda
+
+#Assegno a w gli autovettori
+w<-AC$vectors              #  questo valore è w (omega) * Dc^(-1/2)
+
+#Calcolo gli autovettori u a partire da w
+u<-Dc^(1/2)%*%w 
+u<-u[,-1]              
+u
+
+#Passo ai profili colonna
+S_star<-F%*%Dc_inv%*%t(F)%*%Dr_inv
+
+#Calcolo della costante per passare da u a v
+
+sq_lambda<-diag((sqrt(lambda))^(-1))
+
+#Formula di transizione per trovare v
+v<-F%*%Dc_inv%*%u%*%sq_lambda       
+
+#Scelta delle componenti              
+inerzia<-sum(diag(S))-1
+inerzia<-round(inerzia,3)              #inerzia totale
+sum(lambda)
+in_exp<-lambda/inerzia                 #inerzia spiegata
+in_exp_cum<-cumsum(in_exp)             #inerzia spiegata cumulata
+in_exp_cum<-round(in_exp_cum,3)
+in_exp_cum
+
+#La prima componente spiega circa l'80% dell’inerzia totale, indicando anche in questo caso che la relazione si dispone quasi interamente lungo un’unica dimensione fattoriale.
+#Le categorie si ordinano in modo coerente: ai punteggi più elevati corrispondono livelli più alti di salute mentale percepita, mentre le altre dimensioni dell’analisi apportano un contributo marginale.
+
+#Grafico salto di inerzia spiegata
+screeplot<-barplot(in_exp,main="Scree-plot inerzia",xlab="Dimensione",ylab="Lambda",col="lightblue")
+
+#Calcolo di Fattori e Coordinate principali dello Spazio delle righe
+
+fp_r<-Dc_inv%*%u
+PSI_coord<-Dr_inv%*%F%*%fp_r
+
+#Calcolo di Fattori e Coordinate principali dello Spazio delle colonne
+fp_c<-Dr_inv%*%v
+PHI_coord<-Dc_inv%*%t(F)%*%fp_c
+
+#Etichette per grafici
+
+righe   <- c("gravemente_insufficiente",
+             "lievemente_insufficiente",
+             "sufficiente_o_discreto",
+             "ottimo",
+             "eccellente")
+
+colonne <- c("Mai", "Poco", "A volte", "Spesso")
+
+#Creazione della matrice delle coordinate principali + grafico congiunto
+
+PRINCOORD<-rbind(PSI_coord,PHI_coord)
+
+plot (PRINCOORD [,1] , PRINCOORD [,2], type = "n", main = "Coordinate Principali", xlab ="Asse1",ylab =
+        "Asse2")
+text (PRINCOORD [1:5,1], PRINCOORD[1:5,2], labels = righe, col = "blue")
+text(PRINCOORD[6:9, 1], PRINCOORD[6:9, 2], labels = colonne, col = "red")
+abline(h=0,v=0,lty=2,lwd=1.5)
+
+#Calcolo delle Coordinate Standard di Profili Riga e Colonna
+
+beta<-(sqrt(lambda))^1        #inserisco un fattore di scala: un baricentro beta pari a 1/√lambda
+beta<-diag(beta)
+b_PSI<-PSI_coord%*%beta       #profili riga
+b_PHI<-PHI_coord%*%beta       #profili colonna
+b_coord<-rbind(b_PSI,b_PHI)
+
+#Creazione grafico congiunto coordinate standard
+
+plot(b_coord[,1],b_coord[,2],type="n",xlab="Asse1",
+     ylab="Asse2",main="Coordinate Standard")
+abline(h=0,v=0,lty=2,lwd=1.5)
+text(b_coord[1:5,1],b_coord[1:5,2],labels=righe,col="coral")
+text(b_coord[6:9, 1],b_coord[6:9, 2],labels=colonne,col="darkcyan")
+
+#Calcolo contributi assoluti
+
+ca_r<-Dr%*%fp_c^2
+ca_c<-Dc%*%fp_r^2
+
+#Calcolo contributi relativi Righe
+
+G<-matrix(sumcol,5,4,byrow=T)    #Matrice dei baricentri righe
+di<-(Pr-G)^2%*%Dc_inv             #Distanza Profili riga dai baricentri
+d_ig<-apply(di,1,sum)             
+cos2r<-PSI_coord^2/d_ig           #Contributi relativi righe: qualità della rappresentazione
+
+#Calcolo contributi relativi Colonne
+
+H<-matrix(sumrow,5,4)           #Matrice dei baricentri colonne
+dj<-(Dr_inv%*%(Pc-H)^2)         #Distanza Profili colonna dai baricentri
+d_jh<-apply(dj,2,sum)
+cos2c<-PHI_coord^2/d_jh         #Contributi relativi colonne
+
+#RIEPILOGO
+
+#per le righe
+sumlab <- c("masse","coord1","coord2","ctr.ass1","ctr.ass2","ctr.rel1","ctr.rel2")
+row_summary <- cbind(sumrow, PSI_coord[,1:2], ca_r[,1:2], cos2r[,1:2])
+colnames(row_summary) <- sumlab
+row_summary <- round(row_summary, 3)
+View(row_summary)
+
+#per le colonne
+col_summary <- cbind(sumcol, PHI_coord[,1:2], ca_c[,1:2], cos2c[,1:2])
+colnames(col_summary) <- sumlab
+colnames(col_summary)<-sumlab
+col_summary<-round(col_summary,3)
+View(col_summary)
+
+#Grafico congiunto bidimensionale
+library(FactoMineR)
+tab <- as.matrix(tab_exercise)
+res <- CA(tab, ncp = 4, graph = TRUE)
+
+```
+
+
+L’analisi delle corrispondenze tra il livello di esercizio fisico e la performance scolastica mostra che le prime due dimensioni spiegano complessivamente circa il 98% dell’inerzia, rendendo la rappresentazione bidimensionale altamente informativa.
+La prima dimensione (≈81%) oppone i soggetti che svolgono poco o nessun esercizio, associati a punteggi più bassi, a quelli che praticano esercizio regolare e frequente, associati a risultati più elevati.
+La seconda dimensione (≈17%) distingue in modo marginale i comportamenti intermedi, rappresentando forme di attività non costanti o moderate.
+L’analisi dei contributi relativi indica che le categorie più estreme, sia per punteggio (Eccellente, Gravemente insufficiente) sia per esercizio (Spesso, Mai), presentano valori di cos² superiori a 0.93, risultando ben rappresentate e nettamente collocate lungo la prima dimensione.
+Le modalità intermedie (Sufficiente o discreto, A volte, Poco) mostrano invece valori inferiori o distribuiti su più assi, suggerendo comportamenti misti e meno univoci.
+
+Nel complesso, le due analisi mostrano come il rendimento scolastico sia associato sia al benessere psicologico sia alle abitudini di vita, ma con strutture differenti: la prima relazione (salute mentale–punteggio) è fortemente lineare e monodimensionale, mentre la seconda (esercizio–punteggio) rivela una configurazione più articolata, suggerendo che l’attività fisica incida in modo diversificato sui livelli di performance.
+
+## 4. RETI NEURALI
+
+**PREPROCESSING**
+
+Il primo passo per lo sviluppo della rete neurale è la creazione della variabile target binaria esito, che indica se lo studente ha superato o meno l’esame finale:
+
+```{r}
+student_habits_performance$esito <- ifelse(student_habits_performance$exam_score >= 60,
+                                            "Superato", "Non superato")
+```
+
+importo le varie librerie: (se non sono installate eseguire prima il comando -\> install.packages("package") )
+
+```{r}
+library(tidyverse)
+library(ROCR)
+require(caret)
+library(neuralnet)
+```
+
+Poiché la variabile student_id non ha alcuna utilità predittiva (è semplicemente un identificativo), viene rimossa dal dataset:
+
+```{r}
+X <- student_habits_performance[, !names(student_habits_performance) %in% c("student_id")]
+```
+
+Le variabili categoriche presenti nel dataset devono essere trasformate in formato numerico binario (dummy variables) per poter essere utilizzate come input della rete neurale:
+
+```{r}
+X_dummies <- model.matrix(~ . - 1, data = X)
+X_dummies <- as.data.frame(X_dummies)
+```
+
+Inoltre, si rimuove la variabile exam_score, poiché l’etichetta target (esitoSuperato) è già stata derivata da essa.
+Il dataset viene poi suddiviso in due sottoinsiemi: 700 osservazioni per il training e le restanti 300 per il test, garantendo così la valutazione del modello su dati mai visti prima.
+
+Viene definita poi la formula del modello specificando quali variabili fungono da input per predire esitoSuperato.
+In questo caso, sono state selezionate alcune variabili ritenute potenzialmente significative:
+
+```{r}
+X_dummies <- subset(X_dummies, select = -exam_score)
+
+set.seed(123)
+n <- sample(1:nrow(X_dummies), 700)
+train <- X_dummies[n, ]
+test <- X_dummies[-n, ]
+
+f <- f <- esitoSuperato ~ age + study_hours_per_day + sleep_hours + exercise_frequency + attendance_percentage + mental_health_rating
+
+```
+
+**TRAINING**
+
+A questo punto, si addestra la rete neurale utilizzando il pacchetto neuralnet.
+Si specificano alcuni parametri fondamentali:
+
+algorithm = "rprop+": algoritmo di apprendimento Resilient Backpropagation.
+
+hidden = 3: 3 neuroni nel livello nascosto.
+
+act.fct = "logistic": funzione di attivazione logistica (sigmoide).
+
+err.fct = "sse": funzione di errore basata sulla somma degli errori quadratici.
+
+linear.output = FALSE: output non lineare, adatto per classificazione.
+
+```{r}
+net <- neuralnet(f,
+                 data = train,
+                 algorithm = "rprop+",
+                 hidden = 3,
+                 err.fct = "sse",
+                 act.fct = "logistic",
+                 rep = 1,
+                 stepmax = 1e6,
+                 threshold = 0.01,
+                 linear.output = FALSE)
+```
+
+Visualizziamo graficamente la rete:
+
+```{r}
+plot(net, show.weights = FALSE)
+
+```
+
+per mostrare invece i pesi sulle connessioni:
+
+```{r}
+plot(net, show.weights = TRUE)
+
+```
+
+Il grafico riportato rappresenta la struttura della rete neurale artificiale addestrata per prevedere l'esito finale degli studenti (variabile target: esitoSuperatoò, binaria).
+La rete è composta da: 6 neuroni in input (uno per ciascuna variabile predittiva: età, ore di studio, ore di sonno, frequenza di esercizio fisico, percentuale di presenza e valutazione della salute mentale), 1 layer nascosto contenente 3 neuroni, 1 neurone di output, che produce una stima della probabilità che lo studente superi l’esame.
+I numeri sulle frecce rappresentano i pesi sinaptici appresi dal modello durante il training.
+Questi pesi indicano la forza e il segno (positivo o negativo) dell'influenza che una variabile ha sul modello attraverso i nodi nascosti.
+I Pesi positivi suggeriscono una relazione diretta con l'output (maggiore valore → maggiore probabilità di successo), mentre i pesi negativi indicano una relazione inversa.
+Ad esempio, si può notare che la variabile study_hours_per_day ha un ruolo rilevante nel connettersi a più neuroni nel livello nascosto con pesi abbastanza marcati, il che è coerente con l’ipotesi iniziale che le ore di studio siano fortemente correlate con il superamento dell’esame.
+Il valore "Error: 22.06" rappresenta l’errore complessivo del modello (funzione SSE – Somma degli Errori Quadrati) alla fine dell’addestramento.
+Un valore più basso indica un migliore adattamento del modello ai dati di training.
+Il numero di Steps: 22565 indica il numero di iterazioni effettuate durante l'ottimizzazione del modello per minimizzare l'errore.
+
+**PREDIZIONI**
+
+Dopo l’addestramento, il modello viene utilizzato per fare predizioni sui dati di test:
+
+```{r}
+# Rimuove la colonna "esitoSuperato" dal test set per fare predizioni
+pred <- compute(net, test[, !colnames(test) %in% "esitoSuperato"])
+
+# Estrai solo i risultati previsti dalla rete neurale
+pred <- pred$net.result
+
+# Visualizza i primi 10 valori
+head(pred, 10)
+
+```
+
+Essendo un modello binario, i valori di output sono compresi tra 0 e 1.
+Per classificare gli studenti come "Superato" o "Non superato", si applica una soglia di 0.5:
+
+```{r}
+predcat <- ifelse(pred < 0.5, 0, 1)
+head(predcat, 10)
+```
+
+Si costruisce quindi una confusion matrix, che confronta le predizioni del modello con i valori reali:
+
+```{r}
+# Confronta predizioni con osservazioni reali
+tb <- table(predcat, test$esitoSuperato)
+tb
+
+```
+
+0 = "Non superato", 1 = "Superato"
+
+La tabella ci dice:
+
+58 studenti sono stati correttamente classificati come non superato (veri negativi)
+
+207 studenti sono stati correttamente classificati come superato (veri positivi)
+
+15 studenti che avevano superato l’esame sono stati classificati come non superato (falsi negativi)
+
+20 studenti che non avevano superato l’esame sono stati classificati come superato (falsi positivi)
+
+Da essa si possono calcolare le metriche fondamentali di valutazione:
+
+Accuracy: percentuale di predizioni corrette.
+
+Precision: quante delle predizioni positive erano corrette.
+
+Recall (sensibilità): quanti dei casi positivi reali sono stati identificati correttamente
+
+```{r}
+accuracy <- mean(predcat == test$esitoSuperato)
+accuracy
+```
+
+L’accuracy (88.3%) indica la percentuale complessiva di previsioni corrette fatte dal modello.
+
+Interpretazione: Il modello ha classificato correttamente circa 9 studenti su 10, un risultato piuttosto buono
+
+```{r}
+prc <- precision(tb)
+prc
+```
+
+La precision (79.5%) misura quante delle previsioni positive (cioè previsione = superato) sono davvero corrette.
+
+Interpretazione: Tra tutti gli studenti che il modello ha predetto come “superato”, circa l’80% ha effettivamente superato l’esame.
+
+Utile quando si vuole evitare di classificare come “bravi” chi non lo è davvero (es. rischio di “falsi allarmi”)
+
+```{r}
+rec <- recall(tb)
+rec
+```
+
+Il recall (74.3%) misura quanti dei veri "superato" sono stati effettivamente riconosciuti dal modello.
+
+Interpretazione: Il modello riesce a individuare correttamente circa 3 studenti su 4 che hanno superato l’esame.
+
+Utile se si vuole ridurre il rischio di "falsi negativi", cioè studenti bravi classificati erroneamente come insufficienti.
+
+Interpretazione generale: Nel complesso, le metriche mostrano che il modello è affidabile, ma potrebbe essere ottimizzato ulteriormente per bilanciare meglio precision e recall (ad esempio, modificando la soglia di classificazione o variando l’architettura della rete).
+
+eseguiamo questo comando perchè potrebbe entrare in conflitto con il pacchetto ROCR:
+
+```{r}
+detach(package:neuralnet)
+
+```
+
+creiamo l'oggetto prediction():
+
+```{r}
+library(ROCR)
+
+pr <- prediction(pred, test$esitoSuperato)
+
+```
+
+**COSTRUZIONE ROC CURVE**
+
+Per valutare la capacità discriminante del modello, si costruisce la ROC curve che mostra la relazione tra:
+
+True Positive Rate (recall) sull’asse y
+
+False Positive Rate sull’asse x
+
+La diagonale rappresenta il caso di un classificatore casuale.
+Più la curva ROC si allontana da essa verso l’angolo in alto a sinistra, migliore è il modello.
+Si calcola infine ilvalore dell'Auc, che quantifica l’efficacia complessiva del modello:
+
+```{r}
+library(ROCR)
+
+# Costruisci l'oggetto prediction
+pr <- prediction(pred, test$esitoSuperato)
+
+# Crea la curva ROC
+perf <- performance(pr, x.measure = "fpr", measure = "tpr")
+plot(perf, main = "ROC Curve", col = "blue", lwd = 2)
+abline(a = 0, b = 1, lty = 2, col = "gray")
+
+# Calcola l'AUC
+auc <- performance(pr, measure = "auc")
+auc_value <- auc@y.values[[1]]
+auc_value
+
+```
+
+Nel nostro caso, l’AUC pari a 0.94 è un risultato molto positivo: significa che il modello è in grado di distinguere correttamente tra studenti che superano e non superano l’esame nel 94% dei casi.
+In pratica, più l’AUC si avvicina a 1, più il modello è bravo nel separare le due classi, e il nostro si comporta davvero bene da questo punto di vista.
+Nel complesso, l’utilizzo delle reti neurali si è rivelato efficace, ovvero, il modello ha raggiunto un’elevata accuratezza e un AUC alto, dimostrando che anche a partire da un insieme ristretto di variabili legate alle abitudini quotidiane degli studenti (come ore di studio, sonno, attività fisica, ecc.), si può costruire un sistema predittivo affidabile per stimare l’esito dell’esame.
+Ovviamente, c’è sempre margine di miglioramento.
+Ad esempio, si potrebbe sperimentare con diverse architetture della rete, cambiare il numero di neuroni nel livello nascosto, oppure provare ad aggiungere nuove variabili che potrebbero influenzare l’andamento scolastico.
+Queste modifiche potrebbero portare a un modello ancora più preciso e adattabile.
