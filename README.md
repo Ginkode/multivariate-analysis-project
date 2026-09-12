@@ -1,30 +1,24 @@
 # Multivariate Analysis of Student Performance
 
-Exploratory multivariate analysis of student habits and academic performance using **R** and **R Markdown**.
+University project in **R / R Markdown** exploring relationships between student habits and academic performance with multivariate statistical methods.
 
-The project combines dimensionality-reduction, association-analysis, clustering, and predictive methods to study how behavioral and lifestyle variables relate to exam performance.
+The analysis focuses on a student-performance dataset containing variables such as study time, social-media use, sleep, attendance, exercise, mental-health rating, and exam score.
 
-## Main methods
+## Methods used
 
 - Principal Component Analysis (PCA)
 - Correspondence Analysis (CA)
-- Cluster Analysis
-- Correlation analysis
-- Exploratory visualization
-- Neural-network classification included in the full report
+- hierarchical clustering
+- correlation analysis
+- exploratory visualization
 
-## Research focus
+## Main observations
 
-The analysis investigates relationships between `exam_score` and variables such as:
+The exploratory analysis shows a strong positive relationship between daily study time and exam score. PCA is then used to study the structure of the quantitative variables and reduce dimensionality.
 
-- study hours;
-- social-media use;
-- sleep;
-- attendance;
-- exercise frequency;
-- mental-health rating.
+For categorical variables, Correspondence Analysis is used to study associations between grouped levels of performance and behavioral or wellbeing variables.
 
-The project also reduces the dimensionality of the quantitative and categorical information to identify broader student profiles.
+The clustering section compares single, complete, and average linkage and uses the resulting groups to describe different student profiles.
 
 ## Repository structure
 
@@ -37,47 +31,23 @@ multivariate-analysis-project/
     └── student_multivariate_analysis.html
 ```
 
-## PCA
+## Source and report
 
-The quantitative section standardizes the numerical variables and studies their correlation structure before extracting principal components. Component selection is evaluated through eigenvalues, explained variance, and scree-plot interpretation.
+- `student_multivariate_analysis.Rmd` contains the complete analysis and R code.
+- `report/student_multivariate_analysis.html` is the rendered report.
 
-One of the clearest relationships identified in the exploratory analysis is the positive association between daily study time and exam score.
-
-## Correspondence Analysis
-
-Categorical versions of selected variables are analyzed through contingency tables and Correspondence Analysis. The report includes manual matrix calculations as well as validation with `FactoMineR`.
-
-This section is useful for interpreting associations between categories such as academic-performance level and mental-health level.
-
-## Clustering
-
-The project applies clustering techniques to identify groups of students with similar multivariate profiles and then interprets those groups in the reduced-dimensionality space.
-
-## Full report
-
-The complete analysis, including code, formulas, commentary, plots, and interpretations, is available in:
-
-- `student_multivariate_analysis.Rmd` — editable R Markdown source;
-- `report/student_multivariate_analysis.html` — rendered report.
+The original university report and code comments are mostly **in Italian**. This README is in English so that the project can be reviewed quickly in an international portfolio without rewriting the original academic material.
 
 ## Tools
 
-The project uses packages including:
+Main R packages used in the analysis include `FactoMineR`, `factoextra`, `ggplot2`, `corrplot`, `scatterplot3d`, and `readr`.
 
-- `FactoMineR`
-- `factoextra`
-- `ggplot2`
-- `corrplot`
-- `scatterplot3d`
-- `readr`
+## Methodological notes
 
-## Notes
+The project contains both manual matrix calculations and package-based implementations. This was intentional in the original coursework: the manual steps were used to understand the underlying PCA and Correspondence Analysis calculations, while the package implementations were used for interpretation and visualization.
 
-This repository was originally produced as a university multivariate-data-analysis project and is intended to demonstrate statistical reasoning and exploratory analysis rather than production modelling.
+One point still worth improving is the clustering workflow: distances should be used at full numerical precision during hierarchical clustering, with rounding reserved only for display. A future revision could also use a quantitative criterion such as silhouette width to support the choice of the number of clusters.
 
-## Possible improvements
+## Scope
 
-- simplify repeated manual calculations into reusable functions;
-- make cluster-number selection more explicit with quantitative criteria such as silhouette score;
-- separate exploratory code from final-report code;
-- add a reproducible package/environment specification for R.
+This is an exploratory/statistical-analysis project rather than a production machine-learning system. Its main purpose in the portfolio is to show multivariate reasoning, dimensionality reduction, clustering, and interpretation of statistical results.
